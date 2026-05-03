@@ -185,6 +185,7 @@
     let globalData = {};
     let globalVotingPeriods = {};
     let currentViewingItem = null;
+    let isBlindMode = false; // Biến lưu trạng thái Ban Giám Khảo
 
     function formatDriveImage(url) {
         if (!url) return '';
@@ -210,13 +211,19 @@
 
     async function init() {
         try {
+            // Kiểm tra trạng thái BGK trên URL khi load trang
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('mode') === 'bgk') {
+                isBlindMode = true;
+            }
+
             const response = await fetch(API_URL);
             const json = await response.json();
             globalData = json.data;
             globalVotingPeriods = json.votingPeriods || {};
 
             document.getElementById('loader').style.display = 'none';
-            const urlParams = new URLSearchParams(window.location.search);
+            
             const idParam = urlParams.get('id');
             if (idParam) showDetail(idParam);
             else renderCategories();
@@ -257,18 +264,26 @@
             const card = document.createElement('div');
             card.className = 'card';
             card.onclick = () => {
-                window.history.pushState({}, '', `?id=${item.id}`);
+                // Tạo URL mới, bảo tồn tham số BGK nếu có
+                let nextUrl = `?id=${item.id}`;
+                if (isBlindMode) nextUrl += `&mode=bgk`;
+                window.history.pushState({}, '', nextUrl);
                 showDetail(item.id);
             };
+
+            // Ẩn thông tin nếu là BGK
+            const displayTitle = isBlindMode ? `Tác phẩm ${item.id}` : item.fullName;
+            const unitHtml = isBlindMode ? '' : `<p>🏢 ${item.unit}</p>`;
+
             card.innerHTML = `
                 <div class="card-img-wrapper">
                     <div class="badge">${item.id}</div>
                     ${item.images.length > 1 ? `<div class="multi-icon">1/${item.images.length}</div>` : ''}
-                    <img src="${formatDriveImage(item.images[0])}" alt="${item.fullName}" loading="lazy">
+                    <img src="${formatDriveImage(item.images[0])}" alt="${displayTitle}" loading="lazy">
                 </div>
                 <div class="card-info">
-                    <h3>${item.fullName}</h3>
-                    <p>🏢 ${item.unit}</p>
+                    <h3>${displayTitle}</h3>
+                    ${unitHtml}
                     <div class="caption-preview">"${item.caption}"</div>
                 </div>
             `;
@@ -305,6 +320,21 @@
                 }).join('') + `</div>`;
         }
 
+        // Ẩn thông tin nếu là BGK
+        const displayTitle = isBlindMode ? `Tác phẩm ${targetItem.id}` : targetItem.fullName;
+        const infoRowsHtml = isBlindMode ? '' : `
+            <div class="info-row"><strong>Đơn vị:</strong> ${targetItem.unit}</div>
+            <div class="info-row"><strong>Mã số VC-NLĐ/người học:</strong> ${targetItem.number}</div>
+        `;
+
+        // Ẩn nút bình chọn nếu là BGK
+        const voteBtn = document.getElementById('dynamicVoteBtn');
+        if (isBlindMode) {
+            voteBtn.style.display = 'none';
+        } else {
+            voteBtn.style.display = 'inline-flex';
+        }
+
         detailContent.innerHTML = `
             <div class="image-viewer">
                 <div class="main-image-wrapper" onclick="openLightbox(document.getElementById('mainDetailImage').src)">
@@ -313,10 +343,9 @@
                 ${thumbnailsHtml}
             </div>
             <div class="detail-info">
-                <h2>${targetItem.fullName}</h2>
+                <h2>${displayTitle}</h2>
                 <div class="info-row"><strong>Mã số tác phẩm:</strong> <span style="background: var(--text-blue); color: white; padding: 2px 8px; border-radius: 5px; font-weight: bold;">${targetItem.id}</span></div>
-                <div class="info-row"><strong>Đơn vị:</strong> ${targetItem.unit}</div>
-                <div class="info-row"><strong>Mã số VC-NLĐ/người học:</strong> ${targetItem.number}</div>               
+                ${infoRowsHtml}
                 <div class="caption-box"><strong>Thông điệp tác phẩm:</strong><br>${targetItem.caption}</div>
             </div>
         `;
@@ -379,13 +408,23 @@
     function closeLightbox() { document.getElementById('lightbox').style.display = 'none'; }
 
     function goBack() {
-        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        // Bảo tồn tham số BGK khi back về trang chủ
+        let newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        if (isBlindMode) {
+            newUrl += '?mode=bgk';
+        }
         window.history.pushState({path:newUrl}, '', newUrl);
         renderCategories();
     }
 
     window.onpopstate = function() {
         const urlParams = new URLSearchParams(window.location.search);
+        
+        // Sync lại trạng thái nếu có thay đổi từ history
+        if (urlParams.get('mode') === 'bgk') {
+            isBlindMode = true;
+        }
+
         const idParam = urlParams.get('id');
         if (idParam) showDetail(idParam);
         else renderCategories();
